@@ -12,7 +12,6 @@ SoftwareSerial mySoftwareSerial(14, 12); // RX, TX ( wemos D2,D8 ou 4,15 GPIO ) 
 DFRobotDFPlayerMini myDFPlayer;          // init player
 
 const int buttonPin = 16;
-const int ledPin = 5;
 
 const int R_PIN = 4;
 const int G_PIN = 0;
@@ -21,26 +20,32 @@ const int B_PIN = 2;
 bool isPressed = false;
 bool isOn = false;
 
+int retries = 0;
+bool wifiConnected = false;
+
+int maxIndex = 0;
+
 WiFiServer server(80);
 
-void toggleLed()
+void setRGBLight(int red, int green, int blue)
+{
+  analogWrite(R_PIN, red);
+  analogWrite(G_PIN, green);
+  analogWrite(B_PIN, blue);
+}
+
+void toggleLed(int red, int green, int blue)
 {
   if (isOn)
   {
-    digitalWrite(ledPin, HIGH);
+    setRGBLight(red, green, blue);
     isOn = false;
   }
   else
   {
-    digitalWrite(ledPin, LOW);
+    setRGBLight(0, 0, 0);
     isOn = true;
   }
-}
-
-void setRGBLight(int red, int green, int blue){
-  analogWrite(R_PIN, red);
-  analogWrite(G_PIN, green);
-  analogWrite(B_PIN, blue);
 }
 
 void setup()
@@ -49,11 +54,12 @@ void setup()
   Serial.begin(9600);
 
   pinMode(buttonPin, INPUT);
-  pinMode(ledPin, OUTPUT);
 
   pinMode(R_PIN, OUTPUT);
   pinMode(G_PIN, OUTPUT);
   pinMode(B_PIN, OUTPUT);
+
+  setRGBLight(127, 127, 127);
 
   // Verification du lecteur MP3
   if (!myDFPlayer.begin(mySoftwareSerial))
@@ -78,39 +84,55 @@ void setup()
   Serial.println(myDFPlayer.readFileCounts());        // Le nombre total de fichier mp3 sur la carte ( dossier inclus )
   Serial.println(myDFPlayer.readCurrentFileNumber()); // l'index courant
 
+  maxIndex = myDFPlayer.readFileCounts() + 1; 
+
   // Connection au wifi
+  setRGBLight(0, 0, 255);
+
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED)
+  while (WiFi.status() != WL_CONNECTED && retries < 30)
   {
     delay(500);
+    toggleLed(0, 0, 255);
     Serial.print(".");
-    toggleLed();
+
+    retries++;
   }
 
-  Serial.println("Connecté !");
+  if (retries < 30)
+  {
+    wifiConnected = true;
 
-  // Démmarage du serveur
-  server.begin();
-  Serial.println("Serveur ok !");
+    Serial.println("Connecté !");
 
-  Serial.print("Utilisez cette adresse pour la connexion :");
-  Serial.print("http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("/");
+    // Démmarage du serveur
+    server.begin();
+    Serial.println("Serveur ok !");
+
+    Serial.print("Utilisez cette adresse pour la connexion :");
+    Serial.print("http://");
+    Serial.print(WiFi.localIP());
+    Serial.println("/");
+
+    setRGBLight(0, 255, 0);
+  }
+  else
+  {
+    Serial.println("Impossible de se connecter au Wifi :(");
+    setRGBLight(255, 0, 0);
+  }
 }
 
 void loop()
 {
-  WiFiClient client;
-
   if (digitalRead(buttonPin) == HIGH && !isPressed)
   {
-    int randomNumber = random(1, 5);
+    int randomNumber = random(1, maxIndex);
     myDFPlayer.play(randomNumber);
 
     isPressed = true;
@@ -120,63 +142,66 @@ void loop()
     isPressed = false;
   }
 
-  // Vérification si le client est connecté.
-  client = server.available();
-  if (!client)
+  if (wifiConnected)
   {
-    return;
-  }
+    WiFiClient client;
 
-  // Attendre si le client envoie des données ...
-  Serial.println("nouveau client");
-  while (!client.available())
-  {
+    // Vérification si le client est connecté.
+    client = server.available();
+    if (!client)
+    {
+      return;
+    }
+
+    // Attendre si le client envoie des données ...
+    Serial.println("nouveau client");
+    while (!client.available())
+    {
+      delay(1);
+    }
+
+    String request = client.readStringUntil('\r');
+    Serial.println(request);
+    client.flush();
+
+    int value = LOW;
+    if (request.indexOf("/BTN=ON") != -1)
+    {
+      value = HIGH;
+
+      int randomNumber = random(1, maxIndex);
+      myDFPlayer.play(randomNumber);
+    }
+    if (request.indexOf("/BTN=OFF") != -1)
+    {
+      value = LOW;
+
+      int randomNumber = random(1, maxIndex);
+      myDFPlayer.play(randomNumber);
+    }
+
+    // Réponse
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("");
+    client.println("<!DOCTYPE HTML>");
+    client.println("<html>");
+    client.println("<h1>Arr ?</h1>");
+    client.println("<br><br>");
+    if (value == HIGH)
+    {
+      // client.print("On");
+      client.println("<a href=\"/BTN=OFF\"\"><button>ARR </button></a>");
+    }
+    else
+    {
+      // client.print("Off");
+      client.println("<a href=\"/BTN=ON\"\"><button>ARR </button></a>");
+    }
+    client.println("</html>");
+
     delay(1);
+    Serial.println("Client deconnecté");
+    Serial.println("");
   }
-
-  String request = client.readStringUntil('\r');
-  Serial.println(request);
-  client.flush();
-
-  int value = LOW;
-  if (request.indexOf("/BTN=ON") != -1)
-  {
-    value = HIGH;
-
-    int randomNumber = random(1, 5);
-    myDFPlayer.play(randomNumber);
-  }
-  if (request.indexOf("/BTN=OFF") != -1)
-  {
-    value = LOW;
-
-    int randomNumber = random(1, 5);
-    myDFPlayer.play(randomNumber);
-  }
-
-  // Réponse
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("");
-  client.println("<!DOCTYPE HTML>");
-  client.println("<html>");
-  client.println("<h1>Arr ?</h1>");
-  client.println("<br><br>");
-  if (value == HIGH)
-  {
-    // client.print("On");
-    client.println("<a href=\"/BTN=OFF\"\"><button>ARR </button></a>");
-  }
-  else
-  {
-    // client.print("Off");
-    client.println("<a href=\"/BTN=ON\"\"><button>ARR </button></a>");
-  }
-  client.println("</html>");
-
-  delay(1);
-  Serial.println("Client deconnecté");
-  Serial.println("");
-
-  // digitalWrite(ledPin, HIGH);
 }
