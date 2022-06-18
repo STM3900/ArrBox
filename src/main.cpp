@@ -4,8 +4,8 @@
 #include "DFRobotDFPlayerMini.h" // bibliotheque pour le DFPlayer
 #include <ESP8266WiFi.h>         // Le wifi ou quoi
 
-const char *ssid = "Wii-Fit";
-const char *password = "Gnocking1234";
+const char *ssid = "CC C T-O";
+const char *password = "gnocchis";
 
 // PIN qui serviront pour la communication série sur le WEMOS
 SoftwareSerial mySoftwareSerial(14, 12); // RX, TX ( wemos D2,D8 ou 4,15 GPIO )  ou Tx,RX ( Dfplayer )
@@ -13,9 +13,9 @@ DFRobotDFPlayerMini myDFPlayer;          // init player
 
 const int buttonPin = 16;
 
-const int R_PIN = 4;
+const int B_PIN = 4;
 const int G_PIN = 0;
-const int B_PIN = 2;
+const int R_PIN = 2;
 
 bool isPressed = false;
 bool isOn = false;
@@ -86,6 +86,8 @@ void setup()
 
   maxIndex = myDFPlayer.readFileCounts() + 1;
 
+  myDFPlayer.play(1);
+
   // Connection au wifi
   setRGBLight(0, 0, 255);
 
@@ -132,7 +134,7 @@ void loop()
 {
   if (digitalRead(buttonPin) == HIGH && !isPressed)
   {
-    int randomNumber = random(1, maxIndex);
+    int randomNumber = random(2, maxIndex);
     myDFPlayer.play(randomNumber);
 
     isPressed = true;
@@ -169,14 +171,14 @@ void loop()
     {
       value = HIGH;
 
-      int randomNumber = random(1, maxIndex);
+      int randomNumber = random(2, maxIndex);
       myDFPlayer.play(randomNumber);
     }
     if (request.indexOf("/BTN=OFF") != -1)
     {
       value = LOW;
 
-      int randomNumber = random(1, maxIndex);
+      int randomNumber = random(2, maxIndex);
       myDFPlayer.play(randomNumber);
     }
 
